@@ -1,0 +1,17 @@
+On client side, multi-session and invitation is supported with 2 additional functions: 
+void switchsession(char *pch)
+void invite(int socketfd, char *pch)
+
+Once joined multiple sessions, the user can receive messages from all of them that it joined, but it can only send message to one of them which it is engaging with.
+switchsession switches the engaged session to INVALID (disengage) or another session it has joined. 
+If it is trying to switch to a session it has not yet joined, a warning will be followed.
+This function only modifies the variable visible on the cilent's side, which is insession. This variable will be automatically filled in
+when the user is trying to send a message to the server, to indicate which session it is trying to broadcast this message to.
+To remind the user of the currently engaging session, the /list command will now also return the information of the current session on the first line in its ACK.
+
+The invite functionality is implemented with a new type of packet: INVIT. The client will send such packet to server.
+The receiving of such packet on client's side will trigger a y/n question (#who invited you to #session). 
+If the user inputs anything starting with 'y', the client program will send a joinsession request with the information about session from the invitation filled in.
+
+Meanwhile, compared to section 1, this section also stylized the command line with preceding username to remind the user. The username will be visible after logging in, 
+and will disappear after logging out.
