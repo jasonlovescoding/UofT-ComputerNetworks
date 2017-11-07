@@ -21,7 +21,8 @@ enum msgType {
     NS_ACK,
     MESSAGE,
     QUERY,
-    QU_ACK
+    QU_ACK,
+    INVIT,
 };
 
 typedef struct lab3message {

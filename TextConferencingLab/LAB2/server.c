@@ -109,6 +109,7 @@ void *new_client(void *arg) {
 					printf("User is valid\n");
 				
 					pktSend.type = LO_ACK;
+					memcpy(pktSend.source, pktRecv.source, MAX_DATA);
 					toSend = 1;
 					loggedin = 1;
 					
@@ -205,11 +206,19 @@ void *new_client(void *arg) {
 
 		// User logged in, leave session, no reply
 		else if(pktRecv.type == LEAVE_SESS) {
-			printf("User %s trying to leaving all sessions:\n", newUsr -> uname);
-			
+			int sessToLeave = atoi((char *)(pktRecv.source));
+			printf("User %s trying to leave session %d:\n", newUsr -> uname, sessToLeave);
+
 			// Iterate until all session left
 			while(sessJoined != NULL) {
 				int curSessId = sessJoined -> sessionId;
+				
+				// Skip if not the session to leave
+				if(curSessId != sessToLeave){
+					sessJoined = sessJoined -> next;
+					continue;
+				}
+
 				// Free private sessJoined
 				Session *cur = sessJoined;
 				sessJoined = sessJoined -> next;
@@ -219,17 +228,22 @@ void *new_client(void *arg) {
 				sessionList = leave_session(sessionList, curSessId, newUsr);
 				pthread_mutex_unlock(&sessionList_mutex);
 
-				printf("\tUser %s: Left session %d\n", newUsr -> uname, curSessId);
+				printf("\tUser %s: Left session... %d", newUsr -> uname, curSessId);
 			}
 
 			packetToString(&pktSend, buffer);
-			// Update user status in userConnected;
+			// Update user status in userLoggedin;
 			pthread_mutex_lock(&userLoggedin_mutex);
 			for(User *usr = userLoggedin; usr != NULL; usr = usr -> next) {
 				if(strcmp(usr -> uname, source) == 0) {
-					destroy_session_list(usr -> sessJoined);
-					usr -> sessJoined = NULL;
-					usr -> inSession = 0;
+					// destroyi_session_list(usr -> sessJoined);
+					// usr -> sessJoined = NULL;
+					usr -> sessJoined = remove_session(usr -> sessJoined, sessToLeave);
+					if(usr -> sessJoined == NULL) {
+						usr -> inSession = 0;
+						pthread_mutex_unlock(&userLoggedin_mutex);
+					}
+					printf("Success!\n");
 					break;
 				}
 			}
@@ -284,7 +298,7 @@ void *new_client(void *arg) {
 			printf("User %s: Sending message \"%s\"\n", newUsr -> uname, pktRecv.data);
 			
 			// Session to send to
-			int curSess = atoi(pktRecv.source);
+			int curSess = atoi((char *)(pktRecv.source));
 
 			// Prepare message to be sent
 			memset(&pktSend, 0, sizeof(Packet));
@@ -312,6 +326,9 @@ void *new_client(void *arg) {
 				if((sessToSend = isValidSession(sessionList, cur -> sessionId)) == NULL) continue;
 				printf(" %d", sessToSend -> sessionId);
 				for(User *usr = sessToSend -> usr; usr != NULL; usr = usr -> next) {
+					// Do not send to self
+					if(strcmp(usr -> uname, source) == 0) continue;
+
 					if((bytesSent = send(usr -> sockfd, buffer, BUF_SIZE - 1, 0)) == -1) {
 						perror("error send\n");
 						exit(1);
@@ -358,6 +375,26 @@ void *new_client(void *arg) {
 			}
 
 			printf("Query Result:\n%s", pktSend.data);
+		}
+
+		else if(pktRecv.type == INVIT) {
+			// Change source and forward
+			pktSend = pktRecv;
+			memcpy(pktSend.source, source, MAX_NAME);
+			memset(buffer, 0, sizeof(char) * BUF_SIZE);
+			packetToString(&pktSend, buffer);
+
+			// Use the other packet to send
+			for(User *usr = userLoggedin; usr != NULL; usr = usr -> next) {
+				if(strcmp((char *)(pktRecv.source), usr -> uname) == 0) {
+					if((bytesSent = send(usr -> sockfd, buffer, BUF_SIZE - 1, 0)) == -1) {
+						perror("error send\n");
+						exit(1);
+					}
+					printf("Forwarding invitation from %s to %s\n", source, pktRecv.source);
+					break;
+				}
+			}
 		}
 
 
